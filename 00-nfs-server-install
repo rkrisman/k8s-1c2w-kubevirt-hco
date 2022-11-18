@@ -1,0 +1,145 @@
+#!/bin/bash
+
+# NFS server installation
+
+## PARAMETER HELP FUNCTION
+helpFunction()
+{
+   echo ""
+   echo "Usage: $0 -h hostname -i IP address -p NFS data path -n NFS endpoint subnet"
+   echo -e "\t-h Node hostname"
+   echo -e "\t-i Node IP address"
+   echo -e "\t-p NFS data path"
+   echo -e "\t-n NFS endpoint subnet"
+   exit 1 # Exit script after printing help
+}
+
+while getopts "h:i:p:n:" opt
+do
+   case "$opt" in
+      h ) export hostName="$OPTARG" ;;
+      i ) export ipAddress="$OPTARG" ;;
+      p ) export nfsPath="$OPTARG" ;;
+      n ) export nfsSubnet="$OPTARG" ;;
+      ? ) helpFunction ;; # Print helpFunction in case parameter is non-existent
+   esac
+done
+
+### Print helpFunction in case parameters are empty
+if [ -z "$hostName" ] || [ -z "$ipAddress" ] || [ -z "$nfsPath" ] || [ -z "$nfsSubnet" ]
+then
+   echo "WARNING: Some or all of the parameters are empty";
+   helpFunction
+fi
+
+### Begin script in case all parameters are correct
+echo ""
+echo "*** READY TO START INSTALLATION ***"
+echo ""
+echo "- Node hostname is $hostName"
+echo "- Node IP address is $ipAddress"
+echo "- NFS path is $nfsPath"
+echo "- NFS endpoint subnet is $nfsSubnet"
+echo ""
+
+## SET HOSTNAME & EXPAND ROOT DISK
+
+echo "*** SETTING HOSTNAME TO $hostName... ***"
+echo ""
+
+sudo hostnamectl set-hostname $hostName
+
+echo ""
+echo "*** SETTING LOCALE TO ENGLISH... ***"
+
+echo '
+LANG="en_US.UTF-8"
+LC_NUMERIC="en_US.UTF-8"
+LC_TIME="en_US.UTF-8"
+LC_MONETARY="en_US.UTF-8"
+LC_PAPER="en_US.UTF-8"
+LC_NAME="en_US.UTF-8"
+LC_ADDRESS="en_US.UTF-8"
+LC_TELEPHONE="en_US.UTF-8"
+LC_MEASUREMENT="en_US.UTF-8"
+LC_IDENTIFICATION="en_US.UTF-8"' | sudo tee /etc/default/locale
+
+echo ""
+echo "*** UPDATING APT-GET REPO... ***"
+echo ""
+
+sudo sed -i 's+# deb http://security.ubuntu.com/ubuntu+deb http://security.ubuntu.com/ubuntu+g' /etc/apt/sources.list
+
+sudo apt-get update
+
+echo ""
+echo "*** EXPANDING DEFAULT PARTITION SIZE TO MAXIMUM... ***"
+echo ""
+
+sudo apt-get install -y cloud-guest-utils
+sudo growpart /dev/vda 1
+sudo resize2fs /dev/vda1
+df -h
+
+echo ""
+echo "*** SETTING LOCAL HOSTNAME FILE... ***"
+echo ""
+
+echo "
+172.31.254.1    control control.k8s.lab dashboard.k8s.lab
+172.31.254.9    nfs nfs.k8s.lab
+172.31.254.11   worker1 worker1.k8s.lab
+172.31.254.12   worker2 worker2.k8s.lab" | sudo tee -a /etc/hosts
+
+echo ""
+echo "*** SETTING STATIC IP ADDRESS... ***"
+echo ""
+
+echo "
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ens3:
+      dhcp4: no
+      addresses:
+      - $ipAddress/24
+      gateway4: 172.31.254.254
+      nameservers:
+        addresses: [8.8.8.8]" | sudo tee /etc/netplan/01-netcfg.yaml
+
+sudo netplan apply
+
+## INSTALLING NFS SERVER
+
+echo ""
+echo "*** INSTALLING NFS SERVER... ***"
+echo ""
+
+sudo apt-get install nfs-common nfs-kernel-server -y
+
+echo ""
+echo "*** CONFIGURING NFS SERVER... ***"
+echo ""
+
+sudo mkdir -p $nfsPath
+sudo chown nobody:nogroup $nfsPath
+sudo chmod g+rwxs $nfsPath
+
+### Limit access to clients in $nfsSubnet network
+echo -e "$nfsPath \t$nfsSubnet(rw,sync,no_subtree_check,no_root_squash)" | sudo tee -a /etc/exports
+sudo exportfs -av
+
+#### Restart NFS and show logs
+sudo systemctl restart nfs-kernel-server
+sudo systemctl status nfs-kernel-server
+
+echo ""
+echo "*** VERIFYING NFS SERVER... ***"
+echo ""
+
+### Show NFS export for localhost
+/sbin/showmount -e localhost
+
+### Show NFS export for default public IP of host
+/sbin/showmount -e $ipAddress
