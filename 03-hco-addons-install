@@ -1,6 +1,6 @@
 #!/bin/bash
 
-## KubeVirt HCO, NFS Provisioner, CertManager, CNAO, Multus CNI, Linux Bridge, Bridge Marker, CDI, OKD Web Console addons installation
+## KubeVirt HCO, NFS Provisioner, CertManager, CNAO, Multus CNI, Linux Bridge, Bridge Marker, CDI, K8s Dashboard, OKD Web Console addons installation
 
 ## PARAMETER HELP FUNCTION
 helpFunction()
@@ -255,3 +255,91 @@ spec:
 EOF
 
 kubectl get ingress -n kube-system okd-web-console
+
+echo ""
+echo "*** INSTALLING K8S DASHBOARD... ***"
+echo ""
+
+helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
+helm install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard -n kube-dashboard --create-namespace --set=service.externalPort=8443
+
+cat <<EOF | kubectl apply -f -
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubernetes-dashboard
+  namespace: kube-dashboard
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: dashboard.k8s.lab
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kubernetes-dashboard
+            port:
+              number: 8443
+EOF
+
+cat <<EOF | kubectl apply -f -
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-dashboard
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: admin-user-secret
+  namespace: kube-dashboard
+  annotations:
+    kubernetes.io/service-account.name: admin-user
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-dashboard
+EOF
+
+echo ""
+echo "*** VERIFYING K8S DASHBOARD STATE... ***"
+echo ""
+
+sleep 30
+
+kubectl wait -n kube-dashboard \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=kubernetes-dashboard \
+  --timeout=60s
+
+kubectl get pods -o wide -n kube-dashboard --selector=app.kubernetes.io/component=kubernetes-dashboard
+
+kubectl get svc -n kube-dashboard
+
+kubectl get ingress -n kube-dashboard kubernetes-dashboard
+
+kubectl describe serviceaccount admin-user -n kube-dashboard
+
+echo ""
+echo "*** DISPLAYING K8S DASHBOARD TOKEN... ***"
+echo ""
+
+kubectl describe secret admin-user-secret -n kube-dashboard
