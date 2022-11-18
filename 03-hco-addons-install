@@ -115,12 +115,12 @@ chmod +x deploy.sh
 echo ""
 echo "*** VERIFYING KUBEVIRT HCO STATES... ***"
 echo ""
-sleep 60
+sleep 120
 
 kubectl wait -n kubevirt-hyperconverged \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/part-of=hyperconverged-cluster \
-  --timeout=90s
+  --timeout=120s
 
 kubectl get pods -n kubevirt-hyperconverged -o wide
 
