@@ -105,13 +105,15 @@ echo ""
 echo "*** INSTALLING KUBEVIRT HCO... ***"
 echo ""
 
-export VERSION=$(curl -s https://api.github.com/repos/kubevirt/hyperconverged-cluster-operator/releases | grep tag_name | grep -v -- '-rc' | grep -v -- 'alpha' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
-echo $VERSION
+#export VERSION=$(curl -s https://api.github.com/repos/kubevirt/hyperconverged-cluster-operator/releases | grep tag_name | grep -v -- '-rc' | grep -v -- 'alpha' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
+#echo $VERSION
 
-wget --no-cache https://raw.githubusercontent.com/kubevirt/hyperconverged-cluster-operator/main/deploy/deploy.sh
-sed -i 's+/main/+/${VERSION}/+g' deploy.sh
-chmod +x deploy.sh
-./deploy.sh
+#wget --no-cache https://raw.githubusercontent.com/kubevirt/hyperconverged-cluster-operator/main/deploy/deploy.sh
+#sed -i 's+/main/+/${VERSION}/+g' deploy.sh
+#chmod +x deploy.sh
+#./deploy.sh
+
+curl https://raw.githubusercontent.com/kubevirt/hyperconverged-cluster-operator/master/deploy/deploy.sh | bash
 
 echo ""
 echo "*** VERIFYING KUBEVIRT HCO STATES... ***"
