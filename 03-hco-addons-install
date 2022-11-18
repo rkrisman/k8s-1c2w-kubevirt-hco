@@ -190,6 +190,34 @@ chmod +x virtctl
 sudo install virtctl /usr/local/bin
 
 echo ""
+echo "*** SETTING UP CDI UPLOADPROXY LB SVC FOR PORT FORWARDING... ***"
+echo ""
+
+cat <<EOF | kubectl apply -f -
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdi-uploadproxy-lb
+  namespace: kubevirt-hyperconverged
+spec:
+  ports:
+  - nodePort: 32443
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    cdi.kubevirt.io: cdi-uploadproxy
+  type: LoadBalancer
+EOF
+
+echo ""
+echo "*** VERIFYING CDI UPLOADPROXY LB SVC... ***"
+echo ""
+
+kubectl get svc -n kubevirt-hyperconverged cdi-uploadproxy-lb
+
+echo ""
 echo "*** INSTALLING OKD WEB CONSOLE... ***"
 echo ""
 
