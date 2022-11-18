@@ -1,0 +1,203 @@
+#!/bin/bash
+
+## KubeVirt HCO, NFS Provisioner, CertManager, CNAO, Multus CNI, Linux Bridge, Bridge Marker, CDI, OKD Web Console addons installation
+
+## PARAMETER HELP FUNCTION
+helpFunction()
+{
+   echo ""
+   echo "Usage: $0 -s NFS server address"
+   echo -e "\t-s NFS server address"
+   exit 1 # Exit script after printing help
+}
+
+while getopts "s:" opt
+do
+   case "$opt" in
+      s ) export nfsServer="$OPTARG" ;;
+      ? ) helpFunction ;; # Print helpFunction in case parameter is non-existent
+   esac
+done
+
+### Print helpFunction in case parameters are empty
+if [ -z "$nfsServer" ]
+then
+   echo "WARNING: Some or all of the parameters are empty";
+   helpFunction
+fi
+
+### Begin script in case all parameters are correct
+echo ""
+echo "*** READY TO START INSTALLATION ***"
+echo ""
+echo "- NFS server address is $nfsServer"
+echo ""
+
+echo "*** INSTALLING KUBEVIRT HCO... ***"
+echo "*** -------------------------- ***"
+echo "*** COMPONENTS: ***"
+echo "*** KUBEVIRT, CDI, HOSTPATH PROVISIONER, NFS PROVISIONER ***"
+echo "*** CERT-MANAGER, MULTUS, LINUX BRIDGE, CNAO, BRIDGE MARKER ***"
+echo ""
+
+echo ""
+echo "- NFS server address is $nfsServer"
+echo "- NFS path is $nfsPath"
+echo ""
+
+sudo apt-get update
+
+echo ""
+echo "*** INSTALLING NFS PROVISIONER... ***"
+echo ""
+
+curl https://baltocdn.com/helm/signing.asc | sudo apt-key add -
+sudo apt-get install apt-transport-https --yes
+echo "deb https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+
+sudo apt-get update
+
+sudo apt-get install -y helm
+
+helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+
+helm install nfs-subdir-external-provisioner \
+nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+--set nfs.server=$nfsServer \
+--set nfs.path=$nfsPath \
+--set storageClass.name=nfs-default \
+--set storageClass.defaultClass=true \
+--set storageClass.onDelete=true \
+--set storageClass.reclaimPolicy=Delete
+
+echo ""
+echo "*** VERIFYING NFS PROVISIONER... ***"
+echo ""
+
+kubectl get storageclass nfs-default
+kubectl describe storageclass nfs-default
+
+echo ""
+echo "*** INSTALLING KUBEVIRT HCO... ***"
+echo ""
+
+export VERSION=$(curl -s https://api.github.com/repos/kubevirt/hyperconverged-cluster-operator/releases | grep tag_name | grep -v -- '-rc' | grep -v -- 'alpha' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
+echo $VERSION
+
+curl https://raw.githubusercontent.com/kubevirt/hyperconverged-cluster-operator/${VERSION}/deploy/deploy.sh | bash
+
+echo ""
+echo "*** VERIFYING KUBEVIRT HCO STATES... ***"
+echo ""
+sleep 60
+
+kubectl wait -n kubevirt-hyperconverged \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/part-of=hyperconverged-cluster \
+  --timeout=90s
+
+kubectl get pods -n kubevirt-hyperconverged -o wide
+
+echo ""
+echo "*** UPDATING STORAGE PROFILE... ***"
+echo ""
+
+sleep 60
+
+cat <<EOF | kubectl replace -f -
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: StorageProfile
+metadata:
+  name: nfs-default
+spec:
+  claimPropertySets:
+  - accessModes:
+    - ReadWriteMany
+    volumeMode: Filesystem
+EOF
+
+echo ""
+echo "*** INSTALLING NMSTATE... ***"
+echo ""
+
+export VERSION=$(curl -s https://api.github.com/repos/nmstate/kubernetes-nmstate/releases | grep tag_name | grep -v -- '-rc' | grep -v -- 'alpha' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
+echo $VERSION
+
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}nmstate.io_nmstates.yaml
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/namespace.yaml
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/service_account.yaml
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/role.yaml
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/role_binding.yaml
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/operator.yaml
+
+cat <<EOF | kubectl create -f -
+apiVersion: nmstate.io/v1
+kind: NMState
+metadata:
+  name: nmstate
+EOF
+
+echo ""
+echo "*** VERIFYING NMSTATE... ***"
+echo ""
+
+sleep 30
+
+kubectl wait -n nmstate \
+  --for=condition=ready pod \
+  --selector=app=kubernetes-nmstate \
+  --timeout=90s
+
+
+echo ""
+echo "*** INSTALLING VIRTCTL... ***"
+echo ""
+
+VERSION=$(kubectl get kubevirt.kubevirt.io/kubevirt-kubevirt-hyperconverged -n kubevirt-hyperconverged -o=jsonpath="{..status.observedKubeVirtVersion}")
+echo $VERSION
+ARCH=$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/x86_64/amd64/') || windows-amd64.exe
+echo ${ARCH}
+
+curl -L -o virtctl https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/virtctl-${VERSION}-${ARCH}
+chmod +x virtctl
+
+sudo install virtctl /usr/local/bin
+
+echo ""
+echo "*** INSTALLING OKD WEB CONSOLE... ***"
+echo ""
+
+kubectl create serviceaccount console -n kube-system
+kubectl create clusterrolebinding console --clusterrole=cluster-admin --serviceaccount=kube-system:console -n kube-system
+
+cat <<EOF | kubectl apply -f -
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: console-secret
+  namespace: kube-system
+  annotations:
+    kubernetes.io/service-account.name: console
+type: kubernetes.io/service-account-token
+EOF
+
+wget --no-cache https://kubevirt.io/assets/2020-01-24-OKD-web-console-install/okd-web-console-install.yaml
+sed -i 's+4.2+4.9+g' okd-web-console-install.yaml
+sed -i 's+<token_name>+console-secret+g' okd-web-console-install.yaml
+kubectl create -f okd-web-console-install.yaml
+
+echo ""
+echo "*** VERIFYING OKD WEB CONSOLE STATE... ***"
+echo ""
+
+sleep 60
+
+kubectl wait -n kube-system \
+  --for=condition=ready pod \
+  --selector=app=console \
+  --timeout=90s
+
+kubectl get pods -o wide -n kube-system --selector=app=console 
+
+kubectl get svc -o wide -n kube-system
