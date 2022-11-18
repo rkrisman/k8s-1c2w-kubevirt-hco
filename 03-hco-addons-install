@@ -8,19 +8,21 @@ helpFunction()
    echo ""
    echo "Usage: $0 -s NFS server address"
    echo -e "\t-s NFS server address"
+   echo -e "\t-p NFS data path"
    exit 1 # Exit script after printing help
 }
 
-while getopts "s:" opt
+while getopts "s:p:" opt
 do
    case "$opt" in
       s ) export nfsServer="$OPTARG" ;;
+      p ) export nfsPath="$OPTARG" ;;
       ? ) helpFunction ;; # Print helpFunction in case parameter is non-existent
    esac
 done
 
 ### Print helpFunction in case parameters are empty
-if [ -z "$nfsServer" ]
+if [ -z "$nfsServer" ] || [ -z "$nfsPath" ]
 then
    echo "WARNING: Some or all of the parameters are empty";
    helpFunction
@@ -31,6 +33,7 @@ echo ""
 echo "*** READY TO START INSTALLATION ***"
 echo ""
 echo "- NFS server address is $nfsServer"
+echo "- NFS path is $nfsPath"
 echo ""
 
 echo "*** INSTALLING KUBEVIRT HCO... ***"
@@ -38,11 +41,6 @@ echo "*** -------------------------- ***"
 echo "*** COMPONENTS: ***"
 echo "*** KUBEVIRT, CDI, HOSTPATH PROVISIONER, NFS PROVISIONER ***"
 echo "*** CERT-MANAGER, MULTUS, LINUX BRIDGE, CNAO, BRIDGE MARKER ***"
-echo ""
-
-echo ""
-echo "- NFS server address is $nfsServer"
-echo "- NFS path is $nfsPath"
 echo ""
 
 sudo apt-get update
