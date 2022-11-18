@@ -34,7 +34,7 @@ fi
 
 ### Begin script in case all parameters are correct
 echo ""
-echo "*** 01- K8S CLUSTER INSTALLATION ***"
+echo "*** 01 - K8S CLUSTER INSTALLATION ***"
 echo ""
 echo "*** READY TO START INSTALLATION ***"
 echo ""
