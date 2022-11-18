@@ -249,7 +249,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: okd-web-console
+            name: console-np-service
             port:
               number: 30036
 EOF
