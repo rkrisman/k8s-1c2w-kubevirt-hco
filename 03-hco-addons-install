@@ -30,6 +30,8 @@ fi
 
 ### Begin script in case all parameters are correct
 echo ""
+echo "*** 03 - KUBEVIRT HCO ADDONS INSTALLATION ***"
+echo ""
 echo "*** READY TO START INSTALLATION ***"
 echo ""
 echo "- NFS server address is $nfsServer"
