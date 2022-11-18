@@ -149,7 +149,7 @@ echo ""
 export VERSION=$(curl -s https://api.github.com/repos/nmstate/kubernetes-nmstate/releases | grep tag_name | grep -v -- '-rc' | grep -v -- 'alpha' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
 echo $VERSION
 
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}nmstate.io_nmstates.yaml
+kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/nmstate.io_nmstates.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/namespace.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/service_account.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/role.yaml
