@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# Linux bridges installation
+
+## PARAMETER HELP FUNCTION
+helpFunction()
+{
+   echo ""
+   echo "Usage: $0 -a Worker1 hostname -b Worker2 hostname -i Ingress port -h HA port -e Egress port"
+   echo -e "\t-a Worker1 hostname"
+   echo -e "\t-b Worker2 hostname"
+   echo -e "\t-i Ingress port"
+    echo -e "\t-h HA port"
+   echo -e "\t-e Egress port"
+   exit 1 # Exit script after printing help
+}
+
+while getopts "a:b:i:e:h:" opt
+do
+   case "$opt" in
+      a ) export worker1="$OPTARG" ;;
+      b ) export worker2="$OPTARG" ;;
+      i ) export ingress="$OPTARG" ;;
+      h ) export ha="$OPTARG" ;;	  
+      e ) export egress="$OPTARG" ;;
+      i ) export ingress="$OPTARG" ;;
+      ? ) helpFunction ;; # Print helpFunction in case parameter is non-existent
+   esac
+done
+
+### Print helpFunction in case parameters are empty
+if [ -z "$worker1" ] || [ -z "$worker2" ] || [ -z "$ingress" ] || [ -z "$ha" ] || [ -z "$egress" ]
+then
+   echo "WARNING: Some or all of the parameters are empty";
+   helpFunction
+fi
+
+### Begin script in case all parameters are correct
+echo ""
+echo "*** 04 - LINUX BRIDGES INSTALLATION ***"
+echo ""
+echo ""
+echo "*** READY TO START INSTALLATION ***"
+echo ""
+echo "- Worker1 hostname is $worker1"
+echo "- Worker2 hostname is $worker2"
+echo "- Ingress port is $ingress"
+echo "- HA port is $ha"
+echo "- Egress port is $egress"
+echo ""
+
+echo ""
+echo "*** LABELLING WORKER NODES... ***"
+echo ""
+
+kubectl label nodes $worker1 node-role.kubernetes.io/worker=true
+kubectl label nodes $worker2 node-role.kubernetes.io/worker=true
+
+echo ""
+echo "*** CREATING LINUX BRIDGE FOR INGRESS... ***"
+echo ""
+
+cat <<EOF | kubectl apply -f -
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: ingress
+spec:
+  nodeSelector: 
+    node-role.kubernetes.io/worker: "true"
+  desiredState:
+    interfaces:
+    - name: ingress
+      description: Linux bridge tied to $ingress
+      type: linux-bridge
+      state: up
+      bridge:
+        options:
+          stp:
+            enabled: false
+        port:
+        - name: $ingress
+EOF
+
+echo ""
+echo "*** VERIFYING INGRESS BRIDGE... ***"
+echo ""
+
+kubectl wait nncp ingress --for condition=Available --timeout 2m
+
+echo ""
+echo "*** CREATING LINUX BRIDGE FOR HA... ***"
+echo ""
+
+cat <<EOF | kubectl apply -f -
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: ha
+spec:
+  nodeSelector: 
+    node-role.kubernetes.io/worker: "true"
+  desiredState:
+    interfaces:
+    - name: ha
+      description: Linux bridge tied to $ha
+      type: linux-bridge
+      state: up
+      bridge:
+        options:
+          stp:
+            enabled: false
+        port:
+        - name: $ha
+EOF
+
+echo ""
+echo "*** VERIFYING HA BRIDGE... ***"
+echo ""
+
+kubectl wait nncp ha --for condition=Available --timeout 2m
+
+echo ""
+echo "*** CREATING LINUX BRIDGE FOR EGRESS... ***"
+echo ""
+
+cat <<EOF | kubectl apply -f -
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: egress
+spec:
+  nodeSelector: 
+    node-role.kubernetes.io/worker: "true"
+  desiredState:
+    interfaces:
+    - name: egress
+      description: Linux bridge tied to $egress
+      type: linux-bridge
+      state: up
+      bridge:
+        options:
+          stp:
+            enabled: false
+        port:
+        - name: $egress
+EOF
+
+echo ""
+echo "*** VERIFYING EGRESS BRIDGE... ***"
+echo ""
+
+kubectl wait nncp egress --for condition=Available --timeout 2m
