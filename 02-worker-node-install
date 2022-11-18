@@ -1,0 +1,178 @@
+#!/bin/bash
+
+## PARAMETER HELP FUNCTION
+helpFunction()
+{
+   echo ""
+   echo "Usage: $0 -h hostname -i IP address -r K8s release number -s NFS server address"
+   echo -e "\t-h Node hostname"
+   echo -e "\t-i Node IP address"
+   echo -e "\t-r K8s release number"
+   echo -e "\t-s NFS server address"
+   exit 1 # Exit script after printing help
+}
+
+while getopts "h:i:r:s:" opt
+do
+   case "$opt" in
+      h ) export hostName="$OPTARG" ;;
+      i ) export ipAddress="$OPTARG" ;;
+      r ) export releaseNumber="$OPTARG" ;;
+      s ) export nfsServer="$OPTARG" ;;
+      ? ) helpFunction ;; # Print helpFunction in case parameter is non-existent
+   esac
+done
+
+### Print helpFunction in case parameters are empty
+if [ -z "$hostName" ] || [ -z "$ipAddress" ] || [ -z "$releaseNumber" ] || [ -z "$nfsServer" ]
+then
+   echo "WARNING: Some or all of the parameters are empty";
+   helpFunction
+fi
+
+### Begin script in case all parameters are correct
+echo ""
+echo "*** READY TO START INSTALLATION ***"
+echo ""
+echo "- Node hostname is $hostName"
+echo "- Node IP address is $ipAddress"
+echo "- K8s release number is $releaseNumber"
+echo "- NFS server address is $nfsServer"
+echo ""
+
+## SET HOSTNAME & EXPAND ROOT DISK & IP
+
+echo "*** SETTING HOSTNAME TO $hostName... ***"
+echo ""
+
+sudo hostnamectl set-hostname $hostName
+
+echo ""
+echo "*** SETTING LOCALE TO ENGLISH... ***"
+
+echo '
+LANG="en_US.UTF-8"
+LC_NUMERIC="en_US.UTF-8"
+LC_TIME="en_US.UTF-8"
+LC_MONETARY="en_US.UTF-8"
+LC_PAPER="en_US.UTF-8"
+LC_NAME="en_US.UTF-8"
+LC_ADDRESS="en_US.UTF-8"
+LC_TELEPHONE="en_US.UTF-8"
+LC_MEASUREMENT="en_US.UTF-8"
+LC_IDENTIFICATION="en_US.UTF-8"' | sudo tee /etc/default/locale
+
+echo ""
+echo "*** UPDATING APT-GET REPO... ***"
+echo ""
+
+sudo sed -i 's+# deb http://security.ubuntu.com/ubuntu+deb http://security.ubuntu.com/ubuntu+g' /etc/apt/sources.list
+
+sudo apt-get update
+
+echo ""
+echo "*** EXPANDING DEFAULT PARTITION SIZE TO MAXIMUM... ***"
+echo ""
+
+sudo apt-get install -y cloud-guest-utils
+sudo growpart /dev/vda 1
+sudo resize2fs /dev/vda1
+df -h
+
+echo ""
+echo "*** SETTING LOCAL HOSTNAME FILE... ***"
+echo ""
+
+echo "
+172.31.254.1	control control.k8s.lab dashboard.k8s.lab
+172.31.254.11	worker1 worker1.k8s.lab
+172.31.254.12	worker2 worker2.k8s.lab" | sudo tee -a /etc/hosts
+
+echo ""
+echo "*** SETTING STATIC IP ADDRESS... ***"
+echo ""
+echo "
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ens3:
+      dhcp4: no
+      addresses:
+      - $ipAddress/24
+      gateway4: 172.31.254.254
+      nameservers:
+        addresses: [8.8.8.8]" | sudo tee /etc/netplan/01-netcfg.yaml
+
+sudo netplan apply
+
+echo ""
+echo "*** INSTALLING NFS CLIENT... ***"
+echo ""
+
+sudo apt update
+sudo apt install -y nfs-common
+
+echo ""
+echo "*** VERIFYING NFS MOUNT... ***"
+echo ""
+
+/sbin/showmount -e $nfsServer
+
+## INSTALL K8S
+
+echo ""
+echo "*** INSTALLING DEPENDENCIES... ***"
+echo ""
+
+sudo apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release
+
+echo ""
+echo "*** PREPARING SYSTEM FOR CONTAINERD.IO & K8S INSTALL... ***"
+echo ""
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+
+echo "
+overlay
+br_netfilter" | sudo tee /etc/modules-load.d/containerd.conf
+
+echo "
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/kubernetes.conf
+
+sudo sed -i 's+/swap+#/swap+g' /etc/fstab
+
+sudo ufw disable
+sudo modprobe overlay
+sudo modprobe br_netfilter
+sudo sysctl --system
+sudo swapoff -a
+
+echo ""
+echo "*** INSTALLING CONTAINERD.IO... ***"
+echo ""
+
+sudo apt-get install -y containerd.io
+containerd config default | sudo tee /etc/containerd/config.toml
+sudo systemctl daemon-reload
+sudo systemctl restart containerd
+
+echo ""
+echo "*** INSTALLING K8S... ***"
+echo ""
+
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt update
+sudo apt -y install vim git wget kubelet=$releaseNumber-00 kubeadm=$releaseNumber-00 kubectl=$releaseNumber-00
+sudo apt-mark hold kubelet kubeadm kubectl
+kubectl version --short && kubeadm version
