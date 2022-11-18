@@ -1,6 +1,6 @@
 #!/bin/bash
 
-## KubeVirt HCO, NFS Provisioner, CertManager, CNAO, Multus CNI, Linux Bridge, Bridge Marker, CDI, K8s Dashboard, OKD Web Console addons installation
+# KubeVirt HCO, NFS Provisioner, CertManager, CNAO, Multus CNI, Linux Bridge, Bridge Marker, CDI, K8s Dashboard, OKD Web Console addons installation
 
 ## PARAMETER HELP FUNCTION
 helpFunction()
