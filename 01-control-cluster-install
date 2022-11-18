@@ -88,7 +88,7 @@ echo "*** SETTING LOCAL HOSTNAME FILE... ***"
 echo ""
 
 echo "
-172.31.254.1	control control.k8s.lab dashboard.k8s.lab okd.k8s.lab
+172.31.254.1	control control.k8s.lab upload.k8s.lab dashboard.k8s.lab okd.k8s.lab
 172.31.254.9	nfs nfs.k8s.lab
 172.31.254.11	worker1 worker1.k8s.lab
 172.31.254.12	worker2 worker2.k8s.lab" | sudo tee -a /etc/hosts
