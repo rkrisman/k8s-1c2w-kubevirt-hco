@@ -200,13 +200,6 @@ kubectl wait --namespace kube-system \
 kubectl get pods -n kube-system
 
 echo ""
-echo "*** INSTALLING CONTAINERD CNI... ***"
-echo ""
-
-wget https://github.com/containernetworking/plugins/releases/download/v1.1.1/cni-plugins-linux-amd64-v1.1.1.tgz
-sudo tar -xvzf cni-plugins-linux-amd64-v1.1.1.tgz -C /opt/cni/bin
-
-echo ""
 echo "*** INSTALLING FLANNEL CNI... ***"
 echo ""
 
