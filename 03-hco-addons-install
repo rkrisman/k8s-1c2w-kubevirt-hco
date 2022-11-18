@@ -99,7 +99,6 @@ kubectl wait --namespace ingress-nginx \
 
 kubectl get pods --namespace=ingress-nginx
 
-
 echo ""
 echo "*** INSTALLING KUBEVIRT HCO... ***"
 echo ""
@@ -174,7 +173,6 @@ kubectl wait -n nmstate \
   --selector=app=kubernetes-nmstate \
   --timeout=90s
 
-
 echo ""
 echo "*** INSTALLING VIRTCTL... ***"
 echo ""
@@ -232,7 +230,6 @@ echo ""
 echo "*** CREATING INGRESS FOR OKD WEB CONSOLE... ***"
 echo ""
 
-
 cat <<EOF | kubectl apply -f -
 ---
 apiVersion: networking.k8s.io/v1
@@ -256,3 +253,5 @@ spec:
             port:
               number: 30036
 EOF
+
+kubectl get ingress -n kube-system okd-web-console
