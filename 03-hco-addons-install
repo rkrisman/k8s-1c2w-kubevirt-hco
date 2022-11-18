@@ -78,6 +78,31 @@ kubectl get storageclass nfs-default
 kubectl describe storageclass nfs-default
 
 echo ""
+echo "*** INSTALLING INGRESS NGINX... ***"
+echo ""
+
+curl -s -o ingress-nginx.yaml https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/baremetal/deploy.yaml
+sed -i 's+    targetPort: https+    targetPort: https\n    nodePort: 30443+g' ingress-nginx.yaml
+kubectl apply -f ingress-nginx.yaml 
+
+kubectl get ingressclasses -n ingress-nginx
+kubectl -n ingress-nginx annotate ingressclasses nginx ingressclass.kubernetes.io/is-default-class="true"
+
+echo ""
+echo "*** VERIFYING INGRESS NGINX... ***"
+echo ""
+
+sleep 60
+
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=90s
+
+kubectl get pods --namespace=ingress-nginx
+
+
+echo ""
 echo "*** INSTALLING KUBEVIRT HCO... ***"
 echo ""
 
@@ -167,24 +192,24 @@ echo ""
 echo "*** INSTALLING OKD WEB CONSOLE... ***"
 echo ""
 
-kubectl create serviceaccount console -n kube-system
-kubectl create clusterrolebinding console --clusterrole=cluster-admin --serviceaccount=kube-system:console -n kube-system
+kubectl create serviceaccount okd-web-console -n kube-system
+kubectl create clusterrolebinding console --clusterrole=cluster-admin --serviceaccount=kube-system:okd-web-console -n kube-system
 
 cat <<EOF | kubectl apply -f -
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: console-secret
+  name: okd-web-console-secret
   namespace: kube-system
   annotations:
-    kubernetes.io/service-account.name: console
+    kubernetes.io/service-account.name: okd-web-console
 type: kubernetes.io/service-account-token
 EOF
 
 wget --no-cache https://kubevirt.io/assets/2020-01-24-OKD-web-console-install/okd-web-console-install.yaml
 sed -i 's+4.2+4.9+g' okd-web-console-install.yaml
-sed -i 's+<token_name>+console-secret+g' okd-web-console-install.yaml
+sed -i 's+<token_name>+okd-web-console-secret+g' okd-web-console-install.yaml
 kubectl create -f okd-web-console-install.yaml
 
 echo ""
@@ -201,3 +226,32 @@ kubectl wait -n kube-system \
 kubectl get pods -o wide -n kube-system --selector=app=console 
 
 kubectl get svc -o wide -n kube-system
+
+echo ""
+echo "*** CREATING INGRESS FOR OKD WEB CONSOLE... ***"
+echo ""
+
+
+cat <<EOF | kubectl apply -f -
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: okd-web-console
+  namespace: kube-system
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: okd.k8s.lab
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: okd-web-console
+            port:
+              number: 30036
+EOF
