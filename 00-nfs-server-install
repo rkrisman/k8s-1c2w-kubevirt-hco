@@ -36,7 +36,6 @@ fi
 echo ""
 echo "*** 00 - NFS SERVER INSTALLATION ***"
 echo ""
-echo ""
 echo "*** READY TO START INSTALLATION ***"
 echo ""
 echo "- Node hostname is $hostName"
