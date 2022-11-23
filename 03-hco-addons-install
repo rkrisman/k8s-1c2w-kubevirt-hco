@@ -401,7 +401,7 @@ kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/role_binding.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/operator.yaml
 
-cat <<EOF | kubectl create -f -
+cat <<EOF | kubectl apply -f -
 apiVersion: nmstate.io/v1
 kind: NMState
 metadata:
