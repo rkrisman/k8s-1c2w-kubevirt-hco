@@ -45,7 +45,7 @@ echo "*** INSTALLING KUBEVIRT HCO... ***"
 echo "*** -------------------------- ***"
 echo "*** COMPONENTS: ***"
 echo "*** KUBEVIRT, CDI, HOSTPATH PROVISIONER, NFS PROVISIONER ***"
-echo "*** CERT-MANAGER, MULTUS, LINUX BRIDGE, CNAO, BRIDGE MARKER ***"
+echo "*** METALLB, CERT-MANAGER, MULTUS, LINUX BRIDGE, CNAO, BRIDGE MARKER ***"
 echo ""
 
 sudo apt-get update
@@ -65,20 +65,21 @@ sudo apt-get install -y helm
 helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
 
 helm install nfs-subdir-external-provisioner \
-nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
---set nfs.server=$nfsServer \
---set nfs.path=$nfsPath \
---set storageClass.name=nfs-default \
---set storageClass.defaultClass=true \
---set storageClass.onDelete=true \
---set storageClass.reclaimPolicy=Delete
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  -n nfs-provisioner --create-namespace \
+  --set nfs.server=$nfsServer \
+  --set nfs.path=$nfsPath \
+  --set storageClass.name=nfs-default \
+  --set storageClass.defaultClass=true \
+  --set storageClass.onDelete=true \
+  --set storageClass.reclaimPolicy=Delete
 
 echo ""
 echo "*** VERIFYING NFS PROVISIONER... ***"
 echo ""
 
-kubectl get storageclass nfs-default
-kubectl describe storageclass nfs-default
+kubectl get storageclass -n nfs-provisioner nfs-default
+kubectl describe storageclass -n nfs-provisioner nfs-default
 
 echo ""
 echo "*** INSTALLING METALLB... ***"
@@ -89,7 +90,9 @@ sed -e "s/strictARP: false/strictARP: true/" | \
 kubectl apply -f - -n kube-system
 
 helm repo add bitnami https://charts.bitnami.com/bitnami
-helm install metallb bitnami/metallb
+
+helm install metallb bitnami/metallb \
+  -n metallb-system --create-namespace
 
 #kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.7/config/manifests/metallb-native.yaml
 
@@ -99,7 +102,7 @@ echo ""
 
 sleep 30
 
-kubectl wait \
+kubectl wait -n metallb-system \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/name=metallb \
   --timeout=90s
@@ -117,7 +120,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 172.31.254.201-172.31.254.249
+  - $mlbPool
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
@@ -211,197 +214,6 @@ kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/operator.yaml
 
 cat <<EOF | kubectl create -f -
-apiVersion: nmstate.io/v1
-kind: NMState
-metadata:
-  name: nmstate
-EOF
-
-echo ""
-echo "*** VERIFYING NMSTATE... ***"
-echo ""
-
-sleep 30
-
-kubectl wait -n nmstate \
-  --for=condition=ready pod \
-  --selector=app=kubernetes-nmstate \
-  --timeout=90s
-
-echo ""
-echo "*** INSTALLING VIRTCTL... ***"
-echo ""
-
-VERSION=$(kubectl get kubevirt.kubevirt.io/kubevirt-kubevirt-hyperconverged -n kubevirt-hyperconverged -o=jsonpath="{..status.observedKubeVirtVersion}")
-echo $VERSION
-ARCH=$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/x86_64/amd64/') || windows-amd64.exe
-echo ${ARCH}
-
-curl -L -o virtctl https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/virtctl-${VERSION}-${ARCH}
-chmod +x virtctl
-
-sudo install virtctl /usr/local/bin
-
-#!/bin/bash
-
-# KubeVirt HCO, NFS Provisioner, CertManager, CNAO, Multus CNI, Linux Bridge, Bridge Marker, CDI, K8s Dashboard, OKD Web Console addons installation
-
-## PARAMETER HELP FUNCTION
-helpFunction()
-{
-   echo ""
-   echo "Usage: $0 -s NFS server address"
-   echo -e "\t-s NFS server address"
-   echo -e "\t-p NFS data path"
-   exit 1 # Exit script after printing help
-}
-
-while getopts "s:p:" opt
-do
-   case "$opt" in
-      s ) export nfsServer="$OPTARG" ;;
-      p ) export nfsPath="$OPTARG" ;;
-      ? ) helpFunction ;; # Print helpFunction in case parameter is non-existent
-   esac
-done
-
-### Print helpFunction in case parameters are empty
-if [ -z "$nfsServer" ] || [ -z "$nfsPath" ]
-then
-   echo "WARNING: Some or all of the parameters are empty";
-   helpFunction
-fi
-
-### Begin script in case all parameters are correct
-echo ""
-echo "*** 03 - KUBEVIRT HCO ADDONS INSTALLATION ***"
-echo ""
-echo "*** READY TO START INSTALLATION ***"
-echo ""
-echo "- NFS server address is $nfsServer"
-echo "- NFS path is $nfsPath"
-echo ""
-
-echo "*** INSTALLING KUBEVIRT HCO... ***"
-echo "*** -------------------------- ***"
-echo "*** COMPONENTS: ***"
-echo "*** KUBEVIRT, CDI, HOSTPATH PROVISIONER, NFS PROVISIONER ***"
-echo "*** CERT-MANAGER, MULTUS, LINUX BRIDGE, CNAO, BRIDGE MARKER ***"
-echo ""
-
-sudo apt-get update
-
-echo ""
-echo "*** INSTALLING NFS PROVISIONER... ***"
-echo ""
-
-curl https://baltocdn.com/helm/signing.asc | sudo apt-key add -
-sudo apt-get install apt-transport-https --yes
-echo "deb https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
-
-sudo apt-get update
-
-sudo apt-get install -y helm
-
-helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
-
-helm install nfs-subdir-external-provisioner \
-nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
---set nfs.server=$nfsServer \
---set nfs.path=$nfsPath \
---set storageClass.name=nfs-default \
---set storageClass.defaultClass=true \
---set storageClass.onDelete=true \
---set storageClass.reclaimPolicy=Delete
-
-echo ""
-echo "*** VERIFYING NFS PROVISIONER... ***"
-echo ""
-
-kubectl get storageclass nfs-default
-kubectl describe storageclass nfs-default
-
-echo ""
-echo "*** INSTALLING INGRESS NGINX... ***"
-echo ""
-
-curl -s -o ingress-nginx.yaml https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/baremetal/deploy.yaml
-sed -i 's+    targetPort: https+    targetPort: https\n    nodePort: 30443+g' ingress-nginx.yaml
-kubectl apply -f ingress-nginx.yaml 
-
-kubectl get ingressclasses -n ingress-nginx
-kubectl -n ingress-nginx annotate ingressclasses nginx ingressclass.kubernetes.io/is-default-class="true"
-
-echo ""
-echo "*** VERIFYING INGRESS NGINX... ***"
-echo ""
-
-sleep 60
-
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=90s
-
-kubectl get pods --namespace=ingress-nginx
-
-echo ""
-echo "*** INSTALLING KUBEVIRT HCO... ***"
-echo ""
-
-export VERSION=$(curl -s https://api.github.com/repos/kubevirt/hyperconverged-cluster-operator/releases | grep tag_name | grep -v -- '-rc' | grep -v -- 'alpha' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
-echo $VERSION
-
-wget --no-cache https://raw.githubusercontent.com/kubevirt/hyperconverged-cluster-operator/main/deploy/deploy.sh
-sed -i 's+/main/+/${VERSION}/+g' deploy.sh
-chmod +x deploy.sh
-./deploy.sh
-
-echo ""
-echo "*** VERIFYING KUBEVIRT HCO STATES... ***"
-echo ""
-sleep 120
-
-kubectl wait -n kubevirt-hyperconverged \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/part-of=hyperconverged-cluster \
-  --timeout=120s
-
-kubectl get pods -n kubevirt-hyperconverged -o wide
-
-echo ""
-echo "*** UPDATING STORAGE PROFILE... ***"
-echo ""
-
-sleep 60
-
-cat <<EOF | kubectl replace -f -
-apiVersion: cdi.kubevirt.io/v1beta1
-kind: StorageProfile
-metadata:
-  name: nfs-default
-spec:
-  claimPropertySets:
-  - accessModes:
-    - ReadWriteMany
-    volumeMode: Filesystem
-EOF
-
-echo ""
-echo "*** INSTALLING NMSTATE... ***"
-echo ""
-
-export VERSION=$(curl -s https://api.github.com/repos/nmstate/kubernetes-nmstate/releases | grep tag_name | grep -v -- '-rc' | grep -v -- 'alpha' | head -1 | awk -F': ' '{print $2}' | sed 's/,//' | xargs)
-echo $VERSION
-
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/nmstate.io_nmstates.yaml
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/namespace.yaml
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/service_account.yaml
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/role.yaml
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/role_binding.yaml
-kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/${VERSION}/operator.yaml
-
-cat <<EOF | kubectl apply -f -
 apiVersion: nmstate.io/v1
 kind: NMState
 metadata:
@@ -539,7 +351,9 @@ echo "*** INSTALLING K8S DASHBOARD... ***"
 echo ""
 
 helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
-helm install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard -n kube-dashboard --create-namespace --set=service.externalPort=8443
+helm install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
+  -n kube-dashboard --create-namespace \
+  --set=service.externalPort=8443
 
 cat <<EOF | kubectl apply -f -
 ---
