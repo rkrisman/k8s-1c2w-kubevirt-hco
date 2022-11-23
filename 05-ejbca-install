@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# EJBCA Certificate Authority installation
+
+## PARAMETER HELP FUNCTION
+helpFunction()
+{
+   echo ""
+   echo "Usage: $0 -p HTTP port -s HTTPS port"
+   echo -e "\t-p HTTP port"
+   echo -e "\t-s HTTPS port"
+   exit 1 # Exit script after printing help
+}
+
+while getopts "p:s:" opt
+do
+   case "$opt" in
+      p ) export httpPort="$OPTARG" ;;
+      s ) export httpsPort="$OPTARG" ;;
+      ? ) helpFunction ;; # Print helpFunction in case parameter is non-existent
+   esac
+done
+
+### Print helpFunction in case parameters are empty
+if [ -z "$httpPort" ] || [ -z "$httpsPort" ]
+then
+   echo "WARNING: Some or all of the parameters are empty";
+   helpFunction
+fi
+
+### Begin script in case all parameters are correct
+echo ""
+echo "*** 05 - EJBCA INSTALLATION ***"
+echo ""
+echo ""
+echo "*** READY TO START INSTALLATION ***"
+echo ""
+echo "- HTTP port is $httpPort"
+echo "- HTTPS port is $httpsPort"
+echo ""
+
+echo ""
+echo "*** INSTALLING EJBCA ... ***"
+echo ""
+
+helm repo add bitnami https://charts.bitnami.com/bitnami
+
+helm install ejbca bitnami/ejbca
+
+export httpNodePort=$(kubectl get svc ejbca -o  jsonpath="{.spec.ports[?(@.name=='http')].nodePort}")
+
+kubectl get svc ejbca -o yaml | \
+sed -e "s/nodePort: $httpNodePort/nodePort: $httpPort/" | \
+kubectl apply -f -
+
+export httpsNodePort=$(kubectl get svc ejbca -o  jsonpath="{.spec.ports[?(@.name=='https')].nodePort}")
+
+kubectl get svc ejbca -o yaml | \
+sed -e "s/nodePort: $httpsNodePort/nodePort: $httpsPort/" | \
+kubectl apply -f -
+
+echo ""
+echo "*** VERIFYING EJBCA ... ***"
+echo ""
+echo "***** Please be patient, the pods can take up to 10 minutes to be ready"
+
+sleep 60
+
+kubectl wait --for=condition=ready pod \
+  --selector=app.kubernetes.io/instance=ejbca \
+  --timeout=600s
+
+export SERVICE_IP=$(kubectl get svc --namespace default ejbca --template "{{ range (index .status.loadBalancer.ingress 0) }}{{ . }}{{ end }}")
+echo "EJBCA Public URL: https://$SERVICE_IP:$httpsPort/ejbca"
+echo "EJBCA Admin URL: https://$SERVICE_IP:$httpsPort/ejbca/adminweb"
+echo "EJBCA Enrol URL: https://$SERVICE_IP:$httpsPort/ejbca/enrol/keystore.jsp"
+
+export EJBCA_ADMIN_USERNAME=bitnami
+export EJBCA_ADMIN_PASSWORD=$(kubectl get secret --namespace "default" ejbca -o jsonpath="{.data.ejbca-admin-password}" | base64 -d)
+echo Admin Username: $EJBCA_ADMIN_USERNAME
+echo Admin Password: $EJBCA_ADMIN_PASSWORD
+
+export MARIADB_PASSWORD=$(kubectl get secret --namespace "default" ejbca-mariadb -o jsonpath="{.data.mariadb-password}" | base64 -d)
+echo "MariaDB Password: $MARIADB_PASSWORD"
