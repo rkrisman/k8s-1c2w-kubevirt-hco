@@ -45,17 +45,23 @@ echo ""
 
 helm repo add bitnami https://charts.bitnami.com/bitnami
 
-helm install ejbca bitnami/ejbca
+helm install ejbca bitnami/ejbca -n ejbca --create-namespace
 
-export httpNodePort=$(kubectl get svc ejbca -o  jsonpath="{.spec.ports[?(@.name=='http')].nodePort}")
+echo ""
+echo "*** CONFIGURING EJBCA ... ***"
+echo ""
 
-kubectl get svc ejbca -o yaml | \
+sleep 30
+
+export httpNodePort=$(kubectl get svc -n ejbca ejbca -o  jsonpath="{.spec.ports[?(@.name=='http')].nodePort}")
+
+kubectl get svc -n ejbca ejbca -o yaml | \
 sed -e "s/nodePort: $httpNodePort/nodePort: $httpPort/" | \
 kubectl apply -f -
 
-export httpsNodePort=$(kubectl get svc ejbca -o  jsonpath="{.spec.ports[?(@.name=='https')].nodePort}")
+export httpsNodePort=$(kubectl get svc -n ejbca ejbca -o  jsonpath="{.spec.ports[?(@.name=='https')].nodePort}")
 
-kubectl get svc ejbca -o yaml | \
+kubectl get svc -n ejbca ejbca -o yaml | \
 sed -e "s/nodePort: $httpsNodePort/nodePort: $httpsPort/" | \
 kubectl apply -f -
 
@@ -66,19 +72,20 @@ echo "***** Please be patient, the pods can take up to 10 minutes to be ready"
 
 sleep 60
 
-kubectl wait --for=condition=ready pod \
+kubectl wait -n ejbca \
+  --for=condition=ready pod \
   --selector=app.kubernetes.io/instance=ejbca \
   --timeout=600s
 
-export SERVICE_IP=$(kubectl get svc --namespace default ejbca --template "{{ range (index .status.loadBalancer.ingress 0) }}{{ . }}{{ end }}")
+export SERVICE_IP=$(kubectl get svc --namespace ejbca ejbca --template "{{ range (index .status.loadBalancer.ingress 0) }}{{ . }}{{ end }}")
 echo "EJBCA Public URL: https://$SERVICE_IP:$httpsPort/ejbca"
 echo "EJBCA Admin URL: https://$SERVICE_IP:$httpsPort/ejbca/adminweb"
 echo "EJBCA Enrol URL: https://$SERVICE_IP:$httpsPort/ejbca/enrol/keystore.jsp"
 
 export EJBCA_ADMIN_USERNAME=bitnami
-export EJBCA_ADMIN_PASSWORD=$(kubectl get secret --namespace "default" ejbca -o jsonpath="{.data.ejbca-admin-password}" | base64 -d)
+export EJBCA_ADMIN_PASSWORD=$(kubectl get secret --namespace "ejbca" ejbca -o jsonpath="{.data.ejbca-admin-password}" | base64 -d)
 echo Admin Username: $EJBCA_ADMIN_USERNAME
 echo Admin Password: $EJBCA_ADMIN_PASSWORD
 
-export MARIADB_PASSWORD=$(kubectl get secret --namespace "default" ejbca-mariadb -o jsonpath="{.data.mariadb-password}" | base64 -d)
+export MARIADB_PASSWORD=$(kubectl get secret --namespace "ejbca" ejbca-mariadb -o jsonpath="{.data.mariadb-password}" | base64 -d)
 echo "MariaDB Password: $MARIADB_PASSWORD"
