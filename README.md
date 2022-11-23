@@ -112,7 +112,7 @@ Replace `{password}` with your sudo password.
 echo -e "{password}" | sudo -S su
 wget --no-cache https://raw.githubusercontent.com/rkrisman/k8s-1c2w-kubevirt-hco/main/03-hco-addons-install
 chmod +x 03-hco-addons-install
-./03-hco-addons-install -s {nfs-node-ip} -p {nfs-share}
+./03-hco-addons-install -s {nfs-node-ip} -p {nfs-share} -i {metallb-ippool-range}
 ```
 
 Example:
@@ -120,7 +120,7 @@ Example:
 echo -e "{password}" | sudo -S su
 wget --no-cache https://raw.githubusercontent.com/rkrisman/k8s-1c2w-kubevirt-hco/main/03-hco-addons-install
 chmod +x 03-hco-addons-install
-./03-hco-addons-install -s 172.31.254.9 -p /data/nfs1
+./03-hco-addons-install -s 172.31.254.9 -p /data/nfs1 -i 172.31.254.201-172.31.254.249
 ```
 
 ## 8. Configure Linux bridges for ingress, HA, and egress ports on the Control node:
@@ -146,12 +146,12 @@ chmod +x 04-linux-bridges-install
 Edit your local host file (/etc/hosts in Linux or C:\Windows\System32\drivers\etc\hosts in Windows) to include the following entry:
 
 ```
-{control-node-ip} dashboard.k8s.lab okd.k8s.lab
+{control-node-ip} control.k8s.lab dashboard.k8s.lab okd.k8s.lab
 ```
 
 Example:
 ```
-172.31.254.1 dashboard.k8s.lab okd.k8s.lab
+172.31.254.1 control.k8s.lab dashboard.k8s.lab okd.k8s.lab
 ```
 
 Then, access the K8s Dashboard by browsing using HTTPS on port 30443, [https://dashboard.k8s.lab:30443](https://dashboard.k8s.lab:30443)
