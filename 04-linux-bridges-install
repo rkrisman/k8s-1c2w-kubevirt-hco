@@ -10,7 +10,7 @@ helpFunction()
    echo -e "\t-a Worker1 hostname"
    echo -e "\t-b Worker2 hostname"
    echo -e "\t-i Ingress port"
-    echo -e "\t-h HA port"
+   echo -e "\t-h HA port"
    echo -e "\t-e Egress port"
    exit 1 # Exit script after printing help
 }
