@@ -99,9 +99,9 @@ echo ""
 
 sleep 30
 
-kubectl wait -n metallb-system \
+kubectl wait \
   --for=condition=ready pod \
-  --selector=app=metallb \
+  --selector=app.kubernetes.io/name=metallb \
   --timeout=90s
 
 echo ""
