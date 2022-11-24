@@ -165,7 +165,7 @@ export VERSION=$(curl -s https://api.github.com/repos/kubevirt/hyperconverged-cl
 echo $VERSION
 
 wget --no-cache https://raw.githubusercontent.com/kubevirt/hyperconverged-cluster-operator/main/deploy/deploy.sh
-sed -i 's+/main/+/${VERSION}/+g' deploy.sh
+#sed -i 's+/main/+/${VERSION}/+g' deploy.sh
 chmod +x deploy.sh
 ./deploy.sh
 
